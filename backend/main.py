@@ -5,6 +5,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 import os
 import json
+import subprocess
+import tempfile
+import time
+import uuid
+import git
 
 from .models import AuditState, AuditStatus, VulnerabilityOutput
 
@@ -17,28 +22,128 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite")
 
 # --- LangGraph Nodes ---
 
+RULES_DIR = os.path.join(os.path.dirname(__file__), "semgrep-rules")
+
+def ensure_semgrep_rules():
+    """Ensures semgrep rules are cloned and up-to-date."""
+    if not os.path.exists(RULES_DIR):
+        print("Cloning semgrep rules...")
+        git.Repo.clone_from("https://github.com/ezazulhaq/semgrep-rules.git", RULES_DIR)
+    else:
+        print("Updating semgrep rules...")
+        try:
+            repo = git.Repo(RULES_DIR)
+            origin = repo.remotes.origin
+            origin.pull()
+        except Exception as e:
+            print(f"Warning: Failed to update rules, using cached version: {e}")
+
+def is_cancelled(audit_id: str) -> bool:
+    if not audit_id: return False
+    try:
+        doc = db.collection("audits").document(audit_id).get()
+        return doc.exists and doc.to_dict().get("status") == "CANCELLED"
+    except:
+        return False
+
+def update_progress(audit_id: str, msg: str):
+    if not audit_id: return
+    try:
+        db.collection("audits").document(audit_id).update({"progressMessage": msg})
+    except Exception as e:
+        print("Failed to update progress:", e)
+
 def scanner_node(state: AuditState) -> AuditState:
-    """Simulates Semgrep scanning."""
-    # In a real app, you would clone the repo and run semgrep here.
-    # For now, we simulate a finding.
+    """Runs semgrep against the user's Github repository."""
+    github_url = state.get("github_url")
+    audit_id = state.get("audit_id")
+    if not github_url:
+        return {"status": "FAILED", "error": "No github URL provided."}
+        
+    vulnerabilities = []
     
-    # Update status to indicate scanning is done, moving to analysis
+    if is_cancelled(audit_id):
+        return {"status": "CANCELLED"}
+
+    # Ensure rules are present locally on the instance
+    try:
+        update_progress(audit_id, "Downloading Semgrep Rules...")
+        ensure_semgrep_rules()
+    except Exception as e:
+        return {"status": "FAILED", "error": f"Failed to download semgrep rules: {e}"}
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo_dir = os.path.join(temp_dir, "repo")
+        
+        try:
+            if is_cancelled(audit_id):
+                return {"status": "CANCELLED"}
+
+            # Clone user repo
+            update_progress(audit_id, "Cloning Repository...")
+            git.Repo.clone_from(github_url, repo_dir)
+            
+            if is_cancelled(audit_id):
+                return {"status": "CANCELLED"}
+            
+            # Run semgrep
+            update_progress(audit_id, "Running Semgrep Scan...")
+            process = subprocess.Popen(
+                ["semgrep", "scan", "--config", RULES_DIR, repo_dir, "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            while True:
+                if is_cancelled(audit_id):
+                    process.terminate()
+                    process.wait()
+                    return {"status": "CANCELLED"}
+                try:
+                    result_stdout, result_stderr = process.communicate(timeout=2)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+            
+            update_progress(audit_id, "Processing Vulnerabilities...")
+            if result_stdout:
+                semgrep_output = json.loads(result_stdout)
+                results = semgrep_output.get("results", [])
+                
+                for finding in results:
+                    file_path = finding.get("path", "").replace(repo_dir + "/", "", 1)
+                    if file_path.startswith(repo_dir):
+                        file_path = file_path[len(repo_dir):].lstrip("/")
+
+                    vuln = {
+                        "id": str(uuid.uuid4()),
+                        "type": finding.get("check_id", "Unknown"),
+                        "severity": finding.get("extra", {}).get("severity", "UNKNOWN"),
+                        "description": finding.get("extra", {}).get("message", "No description"),
+                        "file": file_path,
+                        "line": finding.get("start", {}).get("line", 0),
+                        "proposedFixSnippet": "",
+                        "status": "PENDING"
+                    }
+                    vulnerabilities.append(vuln)
+                    
+        except Exception as e:
+            return {"status": "SCANNING", "vulnerabilities": [{"id": str(uuid.uuid4()), "type": "Error", "severity": "ERROR", "description": f"Scanning failed: {str(e)}", "file": "", "line": 0, "proposedFixSnippet": "", "status": "PENDING"}]}
+            
     return {
         "status": "SCANNING", 
-        "vulnerabilities": [{
-            "id": "vuln_1",
-            "type": "OWASP-CWE-78",
-            "severity": "CRITICAL",
-            "description": "Insecure wildcard permitAll() on entire repository path.",
-            "file": "src/main/java/com/app/SecurityConfig.java",
-            "line": 42,
-            "proposedFixSnippet": "", # To be filled by analyzer
-            "status": "PENDING"
-        }]
+        "vulnerabilities": vulnerabilities
     }
 
 def analyzer_node(state: AuditState) -> AuditState:
     """Uses Gemini 2.5 Flash-Lite to propose a fix."""
+    audit_id = state.get("audit_id")
+    if audit_id:
+        doc = db.collection("audits").document(audit_id).get()
+        if doc.exists and doc.to_dict().get("status") == "CANCELLED":
+             return {"status": "CANCELLED"}
+    
     vulns = state.get("vulnerabilities", [])
     if not vulns:
         return {"status": "COMPLETED"}
@@ -85,6 +190,8 @@ builder.add_edge("Scanner", "Analyzer")
 
 # Explicit interruption point / conditional routing
 def route_after_analysis(state: AuditState) -> str:
+    if state["status"] == "CANCELLED":
+        return END
     if state["status"] == "AWAITING_APPROVAL":
         return END # Pause execution by returning END
     return "Patcher" # Or go directly to patcher
@@ -122,7 +229,9 @@ def on_audit_created(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -
     final_state = graph.invoke(initial_state)
     
     # Persist the paused state to Firestore
-    db.collection("audits").document(audit_id).update(final_state)
+    current_doc = db.collection("audits").document(audit_id).get()
+    if current_doc.exists and current_doc.to_dict().get("status") != "CANCELLED":
+        db.collection("audits").document(audit_id).update(final_state)
 
 
 @firestore_fn.on_document_updated(document="audits/{auditId}", region="asia-south1")

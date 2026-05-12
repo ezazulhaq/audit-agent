@@ -4,7 +4,8 @@ export type AuditStatus =
   | 'AWAITING_APPROVAL' 
   | 'PATCHING' 
   | 'COMPLETED' 
-  | 'FAILED';
+  | 'FAILED'
+  | 'CANCELLED';
 
 export type VulnerabilityStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type SeverityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
@@ -24,6 +25,7 @@ export interface Audit {
   id?: string; // Document ID
   githubUrl: string;
   status: AuditStatus;
+  progressMessage?: string;
   reportUrl?: string | null;
   createdBy: string; // User ID
   createdAt: number; // Timestamp

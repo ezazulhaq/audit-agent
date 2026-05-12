@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { AuditService } from './services/audit.service';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
+import packageJson from '../../package.json';
 
 @Component({
   selector: 'app-dashboard',
@@ -19,7 +20,7 @@ import { MatIconModule } from '@angular/material/icon';
           </div>
           <h1 class="text-lg font-semibold tracking-tight text-white">Intelligent <span class="text-emerald-500">Compliance</span> Agent</h1>
           <div class="h-4 w-[1px] bg-white/20 mx-2"></div>
-          <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">V2.4.0 CORE_LIVE</span>
+          <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">V{{ version }} CORE_LIVE</span>
         </div>
 
         <div class="flex items-center gap-6">
@@ -66,8 +67,8 @@ import { MatIconModule } from '@angular/material/icon';
                    class="p-3 rounded-lg cursor-pointer transition-colors"
                    [ngClass]="{
                      'bg-emerald-500/10 border border-emerald-500/30 ring-1 ring-emerald-500/20': auditId() === audit.id,
-                     'bg-white/5 border border-white/10 hover:bg-white/10': auditId() !== audit.id && audit.status !== 'FAILED',
-                     'bg-red-500/5 border border-red-500/20 opacity-80': audit.status === 'FAILED'
+                     'bg-white/5 border border-white/10 hover:bg-white/10': auditId() !== audit.id && audit.status !== 'FAILED' && audit.status !== 'CANCELLED',
+                     'bg-red-500/5 border border-red-500/20 opacity-80': audit.status === 'FAILED' || audit.status === 'CANCELLED'
                    }">
                    
                    <p class="text-sm font-medium" [ngClass]="auditId() === audit.id ? 'text-emerald-100' : 'text-white'">
@@ -76,7 +77,7 @@ import { MatIconModule } from '@angular/material/icon';
                    
                    <div class="flex items-center justify-between mt-1">
                      <p class="text-[10px] text-white/40 uppercase tracking-tight truncate max-w-[150px]">
-                       {{ audit.status === 'AWAITING_APPROVAL' ? 'Awaiting HITL Approval' : audit.status === 'SCANNING' ? 'Scanner Node: Active' : audit.status === 'PATCHING' ? 'Applying Patch...' : audit.status }}
+                       {{ audit.status === 'AWAITING_APPROVAL' ? 'Awaiting HITL Approval' : audit.status === 'SCANNING' ? (audit.progressMessage || 'Scanner Node: Active') : audit.status === 'PATCHING' ? 'Applying Patch...' : audit.status }}
                      </p>
                      @if(audit.error) {
                         <mat-icon class="text-red-500 !w-3 !h-3 text-[12px] opacity-70">error</mat-icon>
@@ -157,8 +158,20 @@ import { MatIconModule } from '@angular/material/icon';
                  
                  <!-- Status Pills -->
                  <span class="text-xs font-mono px-3 py-1 bg-white/5 border border-white/10 rounded text-white/60">
-                   Status: {{ currentAudit()?.status }}
+                   Status: {{ currentAudit()?.status === 'SCANNING' && currentAudit()?.progressMessage ? currentAudit()?.progressMessage : currentAudit()?.status }}
                  </span>
+
+                 @if (currentAudit()?.status === 'SCANNING' || currentAudit()?.status === 'PENDING') {
+                   <button (click)="cancelCurrentAudit()" class="px-3 py-1 border border-amber-500/30 bg-amber-500/10 text-amber-500 rounded text-xs font-bold uppercase tracking-widest hover:bg-amber-500/20 flex items-center gap-2 transition-colors cursor-pointer mt-2">
+                     <mat-icon class="!w-4 !h-4 text-[16px] flex items-center justify-center">cancel</mat-icon>
+                     Cancel Scan
+                   </button>
+                 }
+
+                 <button (click)="deleteCurrentAudit()" class="px-3 py-1 border border-red-500/30 bg-red-500/10 text-red-500 rounded text-xs font-bold uppercase tracking-widest hover:bg-red-500/20 flex items-center gap-2 transition-colors cursor-pointer mt-2">
+                   <mat-icon class="!w-4 !h-4 text-[16px] flex items-center justify-center">delete</mat-icon>
+                   Remove Audit
+                 </button>
                </div>
              </div>
              
@@ -304,6 +317,7 @@ import { MatIconModule } from '@angular/material/icon';
 })
 export class DashboardComponent {
   auditService = inject(AuditService);
+  version = packageJson.version;
   
   audits = this.auditService.activeAudits;
   currentAudit = this.auditService.currentAudit;
@@ -375,6 +389,26 @@ export class DashboardComponent {
   rejectFix(vulnId: string) {
      if (this.currentAudit()) {
         this.auditService.rejectFix(this.currentAudit()!.id!, vulnId, this.vulns());
+     }
+  }
+
+  async cancelCurrentAudit() {
+     const audit = this.currentAudit();
+     if (audit && audit.id) {
+        await this.auditService.cancelAudit(audit.id);
+     }
+  }
+
+  async deleteCurrentAudit() {
+     const audit = this.currentAudit();
+     if (audit && audit.id) {
+        await this.auditService.deleteAudit(audit.id);
+        this.auditId.set(null);
+        this.currentAudit.set(null);
+        if (this.currentAuditSub) {
+           this.currentAuditSub();
+           this.currentAuditSub = null;
+        }
      }
   }
 }

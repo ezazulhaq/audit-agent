@@ -109,6 +109,17 @@ export class AuditService {
     }
 
     try {
+      // Validation: Check if any repository is already under scan
+      const activeScan = this.activeAudits().find(a => 
+        ['PENDING', 'SCANNING', 'AWAITING_APPROVAL', 'PATCHING'].includes(a.status)
+      );
+
+      if (activeScan) {
+        this.error.set('A scan is already in progress. Please wait for it to complete or cancel it.');
+        return null;
+      }
+      this.error.set(null); // Clear previous errors
+
       const auditsRef = collection(this.db, 'audits');
       const newDocRef = doc(auditsRef);
       const newAudit: Audit = {
@@ -162,6 +173,31 @@ export class AuditService {
       });
     } catch (err: any) {
         this.error.set('Failed to reject fix: ' + err.message);
+    }
+  }
+
+  public async deleteAudit(auditId: string) {
+    if (!this.db) return;
+    try {
+      const { deleteDoc } = await import('firebase/firestore');
+      const auditRef = doc(this.db, 'audits', auditId);
+      await deleteDoc(auditRef);
+    } catch (err: any) {
+      this.error.set('Failed to delete audit: ' + err.message);
+    }
+  }
+
+  public async cancelAudit(auditId: string) {
+    if (!this.db) return;
+    try {
+      const auditRef = doc(this.db, 'audits', auditId);
+      await updateDoc(auditRef, {
+        status: 'CANCELLED',
+        progressMessage: 'Scan Cancelled',
+        updatedAt: Date.now()
+      });
+    } catch (err: any) {
+      this.error.set('Failed to cancel audit: ' + err.message);
     }
   }
 }
