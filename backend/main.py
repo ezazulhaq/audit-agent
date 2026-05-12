@@ -215,6 +215,15 @@ def on_audit_created(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -
     
     print(f"Triggered workflow for audit {audit_id}")
     
+    # Update status to SCANNING immediately in DB
+    try:
+        db.collection("audits").document(audit_id).update({
+            "status": "SCANNING",
+            "progressMessage": "Runner Node: Starting..."
+        })
+    except Exception as e:
+        print("Failed to initialize audit status:", e)
+    
     initial_state = AuditState(
         audit_id=audit_id,
         github_url=audit_data.get("githubUrl", ""),

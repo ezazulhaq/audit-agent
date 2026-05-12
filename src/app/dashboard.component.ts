@@ -77,14 +77,14 @@ import packageJson from '../../package.json';
                    
                    <div class="flex items-center justify-between mt-1">
                      <p class="text-[10px] text-white/40 uppercase tracking-tight truncate max-w-[150px]">
-                       {{ audit.status === 'AWAITING_APPROVAL' ? 'Awaiting HITL Approval' : audit.status === 'SCANNING' ? (audit.progressMessage || 'Scanner Node: Active') : audit.status === 'PATCHING' ? 'Applying Patch...' : audit.status }}
+                       {{ audit.status === 'AWAITING_APPROVAL' ? 'Awaiting HITL Approval' : (audit.status === 'SCANNING' || audit.status === 'PENDING') ? (audit.progressMessage || 'Initializing...') : audit.status === 'PATCHING' ? 'Applying Patch...' : audit.status }}
                      </p>
                      @if(audit.error) {
                         <mat-icon class="text-red-500 !w-3 !h-3 text-[12px] opacity-70">error</mat-icon>
                      }
                    </div>
                    
-                   @if (audit.status === 'SCANNING') {
+                   @if (audit.status === 'SCANNING' || audit.status === 'PENDING') {
                      <div class="mt-2 w-full bg-white/10 h-1 flex rounded-full overflow-hidden relative">
                        <div class="bg-emerald-500 w-1/3 h-1 rounded-full absolute animate-[shimmer_1.5s_infinite]"></div>
                      </div>
@@ -158,7 +158,7 @@ import packageJson from '../../package.json';
                  
                  <!-- Status Pills -->
                  <span class="text-xs font-mono px-3 py-1 bg-white/5 border border-white/10 rounded text-white/60">
-                   Status: {{ currentAudit()?.status === 'SCANNING' && currentAudit()?.progressMessage ? currentAudit()?.progressMessage : currentAudit()?.status }}
+                   Status: {{ (currentAudit()?.status === 'SCANNING' || currentAudit()?.status === 'PENDING') && currentAudit()?.progressMessage ? currentAudit()?.progressMessage : currentAudit()?.status }}
                  </span>
 
                  @if (currentAudit()?.status === 'SCANNING' || currentAudit()?.status === 'PENDING') {
