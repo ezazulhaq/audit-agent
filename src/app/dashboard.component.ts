@@ -306,6 +306,22 @@ import packageJson from '../../package.json';
           </div>
         </div>
       </footer>
+
+      <!-- Cancel Confirmation Dialog -->
+      @if (showCancelConfirmation()) {
+        <div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+           <div class="bg-[#121212] border border-white/10 rounded-xl max-w-md w-full p-6 shadow-2xl flex flex-col items-center text-center">
+              <mat-icon class="text-amber-500 !w-12 !h-12 text-[48px] mb-4">warning</mat-icon>
+              <h2 class="text-xl font-light text-white mb-2">Cancel Active Scan?</h2>
+              <p class="text-white/60 text-sm mb-8 leading-relaxed">Are you sure you want to cancel the current scan for <span class="text-emerald-400 font-mono">{{ currentAudit()?.githubUrl }}</span>? This will stop the operation immediately.</p>
+              
+              <div class="flex gap-4 w-full">
+                 <button (click)="showCancelConfirmation.set(false)" class="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded tracking-widest uppercase text-[10px] font-bold transition-colors cursor-pointer">Keep Scanning</button>
+                 <button (click)="confirmCancelScan()" class="flex-1 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 rounded tracking-widest uppercase text-[10px] font-bold transition-colors cursor-pointer">Yes, Cancel</button>
+              </div>
+           </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -324,6 +340,7 @@ export class DashboardComponent {
   vulns = this.auditService.currentVulns;
   
   auditId = signal<string | null>(null);
+  showCancelConfirmation = signal(false);
   
   newRepoUrl = '';
   
@@ -393,10 +410,15 @@ export class DashboardComponent {
   }
 
   async cancelCurrentAudit() {
+     this.showCancelConfirmation.set(true);
+  }
+
+  async confirmCancelScan() {
      const audit = this.currentAudit();
      if (audit && audit.id) {
         await this.auditService.cancelAudit(audit.id);
      }
+     this.showCancelConfirmation.set(false);
   }
 
   async deleteCurrentAudit() {
