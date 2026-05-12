@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Audit": {
+      "title": "Audit",
+      "description": "Represents an audit operation for a GitHub repository.",
+      "type": "object",
+      "properties": {
+        "githubUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "SCANNING", "AWAITING_APPROVAL", "PATCHING", "COMPLETED", "FAILED"] },
+        "reportUrl": { "type": ["string", "null"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "error": { "type": ["string", "null"] }
+      },
+      "required": ["githubUrl", "status", "createdBy", "createdAt", "updatedAt"]
+    },
+    "Vulnerability": {
+      "title": "Vulnerability",
+      "description": "Represents a vulnerability found during an audit.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "description": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "number" },
+        "proposedFixSnippet": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] }
+      },
+      "required": ["type", "severity", "description", "file", "line", "proposedFixSnippet", "status"]
+    }
+  },
+  "firestore": {
+    "/audits/{auditId}": {
+      "schema": { "$ref": "#/entities/Audit" },
+      "description": "Stores all audits created by users."
+    },
+    "/audits/{auditId}/vulnerabilities/{vulnerabilityId}": {
+      "schema": { "$ref": "#/entities/Vulnerability" },
+      "description": "Stores vulnerabilities associated with a specific audit."
+    }
+  }
+}

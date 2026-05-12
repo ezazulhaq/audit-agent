@@ -1,0 +1,6 @@
+{
+  "name": "Audit & Compliance Agent",
+  "description": "HITL AI agent that scans Spring Boot repositories for vulnerabilities, proposes code fixes, and generates audit reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

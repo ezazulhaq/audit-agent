@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    match /audits/{auditId} {
+      allow read: if request.auth != null && resource.data.createdBy == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.createdBy == request.auth.uid;
+      // Provide an override for "PATCHING" workflow
+      allow update: if request.auth != null 
+                    && resource.data.createdBy == request.auth.uid;
+    }
+  }
+}
