@@ -13,9 +13,20 @@ import git
 
 from .models import AuditState, AuditStatus, VulnerabilityOutput
 
+# Load database ID from firebase-applet-config.json
+DB_ID = "(default)"
+try:
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "firebase-applet-config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            config = json.load(f)
+            DB_ID = config.get("firestoreDatabaseId", "(default)")
+except Exception as e:
+    print(f"Warning: Could not load firebase-applet-config.json: {e}")
+
 # Initialize Firebase Admin
 app = initialize_app()
-db = firestore.client()
+db = firestore.client(database=DB_ID)
 
 # Initialize Gemini Model
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite")
@@ -204,7 +215,7 @@ graph = builder.compile()
 
 # --- Firebase Cloud Functions ---
 
-@firestore_fn.on_document_created(document="audits/{auditId}", region="asia-south1")
+@firestore_fn.on_document_created(document="audits/{auditId}", database=DB_ID, region="asia-south1")
 # def on_audit_created(event: firestore_fn.Event[firestore_fn.DocumentSnapshot | None]) -> None:
 def on_audit_created(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -> None:
     if event.data is None:
@@ -243,7 +254,7 @@ def on_audit_created(event: firestore_fn.Event[firestore_fn.DocumentSnapshot]) -
         db.collection("audits").document(audit_id).update(final_state)
 
 
-@firestore_fn.on_document_updated(document="audits/{auditId}", region="asia-south1")
+@firestore_fn.on_document_updated(document="audits/{auditId}", database=DB_ID, region="asia-south1")
 # def on_audit_updated(event: firestore_fn.Event[firestore_fn.Change[firestore_fn.DocumentSnapshot | None]]) -> None:
 def on_audit_updated(event: firestore_fn.Event[firestore_fn.Change[firestore_fn.DocumentSnapshot]]) -> None:
     if event.data is None or event.data.after is None or event.data.before is None:

@@ -1,0 +1,16 @@
+{
+  "functions": [
+    {
+      "source": "backend",
+      "codebase": "default",
+      "ignore": [
+        "venv",
+        ".git"
+      ],
+      "runtime": "python311"
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
