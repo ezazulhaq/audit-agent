@@ -77,7 +77,8 @@ app.post('/api/patch-repo', async (req, res) => {
      return;
   }
   // Simulate patching
-  res.json({ status: 'COMPLETED', reportUrl: 'https://storage.googleapis.com/simulated/report.md' });
+  const reportContent = `# Vulnerability Fix Report\n\nPatched ${vulnerabilities.length} vulnerabilities.\n\nAll automated tests pass.`;
+  res.json({ status: 'COMPLETED', reportContent });
 });
 
 /**

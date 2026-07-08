@@ -3,6 +3,7 @@ import { isPlatformBrowser } from '@angular/common';
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, Auth } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, query, where, Firestore } from 'firebase/firestore';
+import { getStorage, ref, uploadString, getDownloadURL, FirebaseStorage } from 'firebase/storage';
 import firebaseConfig from '../../../firebase-applet-config.json';
 import { Audit, Vulnerability } from '../models/audit.models';
 
@@ -15,6 +16,7 @@ export class AuditService {
   private app: FirebaseApp | null = null;
   private auth: Auth | null = null;
   private db: Firestore | null = null;
+  private storage: FirebaseStorage | null = null;
 
   // Signals for state
   public user = signal<User | null>(null);
@@ -31,6 +33,7 @@ export class AuditService {
       this.app = initializeApp(firebaseConfig);
       this.auth = getAuth(this.app);
       this.db = getFirestore(this.app, firebaseConfig.firestoreDatabaseId);
+      this.storage = getStorage(this.app);
       this.initAuth();
     } else {
       this.isAuthReady.set(true); // Don't block SSR on auth
@@ -198,10 +201,24 @@ export class AuditService {
       const data = await res.json();
       
       if (!res.ok) throw new Error(data.error);
+
+      let reportUrl = data.reportUrl || '';
+      
+      if (data.reportContent && this.storage) {
+         try {
+           const reportRef = ref(this.storage, `reports/${auditId}-${Date.now()}.md`);
+           await uploadString(reportRef, data.reportContent, 'raw', { contentType: 'text/markdown' });
+           reportUrl = await getDownloadURL(reportRef);
+         } catch (e) {
+           console.error('Failed to upload report to storage:', e);
+           // Fallback to empty or simulated
+           reportUrl = data.reportUrl || '';
+         }
+      }
       
       await updateDoc(auditRef, {
         status: data.status, // Should be COMPLETED
-        reportUrl: data.reportUrl,
+        reportUrl: reportUrl,
         progressMessage: 'Patching complete.',
         updatedAt: Date.now()
       });
