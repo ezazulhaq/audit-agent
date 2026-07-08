@@ -1,8 +1,0 @@
-firebase-functions>=0.1.0
-firebase-admin>=6.2.0
-langgraph>=0.0.26
-langchain-google-genai>=1.0.0
-langchain-core>=0.1.52
-pydantic>=2.7.0
-GitPython>=3.1.41
-semgrep>=1.62.0

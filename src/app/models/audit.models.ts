@@ -31,4 +31,5 @@ export interface Audit {
   createdAt: number; // Timestamp
   updatedAt: number; // Timestamp
   error?: string | null;
+  vulnerabilities?: Vulnerability[];
 }

@@ -1,8 +1,8 @@
-import { Injectable, signal, effect, computed, PLATFORM_ID, inject } from '@angular/core';
+import { Injectable, signal, PLATFORM_ID, inject } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, Auth } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, query, where, Timestamp, Firestore } from 'firebase/firestore';
+import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, query, where, Firestore } from 'firebase/firestore';
 import firebaseConfig from '../../../firebase-applet-config.json';
 import { Audit, Vulnerability } from '../models/audit.models';
 
@@ -55,8 +55,9 @@ export class AuditService {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(this.auth, provider);
-    } catch (err: any) {
-      this.error.set(err.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.error.set(msg);
     }
   }
 
@@ -84,7 +85,7 @@ export class AuditService {
   }
 
   public subscribeToAuditDetails(auditId: string) {
-    if (!this.db) return () => {};
+    if (!this.db) return () => { return; };
     const docRef = doc(this.db, 'audits', auditId);
     return onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -92,8 +93,9 @@ export class AuditService {
         this.currentAudit.set(audit);
         // Assuming vulnerabilities are stored inside the audit doc for simplicity based on python backend code:
         // 'vulnerabilities' is a field in AuditState.
-        const vulns = (docSnap.data() as any)['vulnerabilities'] || [];
-        this.currentVulns.set(vulns as Vulnerability[]);
+        const auditData = docSnap.data() as Audit;
+        const vulns = auditData?.vulnerabilities || [];
+        this.currentVulns.set(vulns);
       }
     }, (error) => {
       this.error.set(error.message);
@@ -124,16 +126,50 @@ export class AuditService {
       const newDocRef = doc(auditsRef);
       const newAudit: Audit = {
         githubUrl,
-        status: 'PENDING',
+        status: 'SCANNING',
+        progressMessage: 'Initializing Node.js Analysis Pipeline...',
         createdBy: user.uid,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       await setDoc(newDocRef, newAudit);
+      
+      // Kick off background analysis (don't await it so we can return the ID)
+      this.runAnalysis(newDocRef.id, githubUrl);
+      
       return newDocRef.id;
-    } catch (err: any) {
-      this.error.set('Failed to create audit: ' + err.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.error.set('Failed to create audit: ' + msg);
       return null;
+    }
+  }
+
+  private async runAnalysis(auditId: string, githubUrl: string) {
+    if (!this.db) return;
+    try {
+      const res = await fetch('/api/analyze-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auditId, githubUrl })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error);
+      
+      await updateDoc(doc(this.db, 'audits', auditId), {
+        status: 'AWAITING_APPROVAL',
+        vulnerabilities: data.vulnerabilities,
+        progressMessage: 'Analysis complete. Waiting for approval.',
+        updatedAt: Date.now()
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await updateDoc(doc(this.db, 'audits', auditId), {
+        status: 'FAILED',
+        error: msg,
+        updatedAt: Date.now()
+      });
     }
   }
 
@@ -147,12 +183,37 @@ export class AuditService {
       );
       
       await updateDoc(auditRef, {
-        status: 'PATCHING', // Trigger the backend resume
+        status: 'PATCHING', // Trigger the frontend loading state
         vulnerabilities: updatedVulns,
+        progressMessage: 'Applying patches to repository...',
         updatedAt: Date.now()
       });
-    } catch (err: any) {
-        this.error.set('Failed to approve fix: ' + err.message);
+      
+      // Call backend to patch
+      const res = await fetch('/api/patch-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vulnerabilities: updatedVulns })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error);
+      
+      await updateDoc(auditRef, {
+        status: data.status, // Should be COMPLETED
+        reportUrl: data.reportUrl,
+        progressMessage: 'Patching complete.',
+        updatedAt: Date.now()
+      });
+      
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.error.set('Failed to approve fix: ' + msg);
+      await updateDoc(doc(this.db, 'audits', auditId), {
+        status: 'FAILED',
+        error: msg,
+        updatedAt: Date.now()
+      });
     }
   }
 
@@ -171,8 +232,9 @@ export class AuditService {
         vulnerabilities: updatedVulns,
         updatedAt: Date.now()
       });
-    } catch (err: any) {
-        this.error.set('Failed to reject fix: ' + err.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.error.set('Failed to reject fix: ' + msg);
     }
   }
 
@@ -182,8 +244,9 @@ export class AuditService {
       const { deleteDoc } = await import('firebase/firestore');
       const auditRef = doc(this.db, 'audits', auditId);
       await deleteDoc(auditRef);
-    } catch (err: any) {
-      this.error.set('Failed to delete audit: ' + err.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.error.set('Failed to delete audit: ' + msg);
     }
   }
 
@@ -196,8 +259,9 @@ export class AuditService {
         progressMessage: 'Scan Cancelled',
         updatedAt: Date.now()
       });
-    } catch (err: any) {
-      this.error.set('Failed to cancel audit: ' + err.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.error.set('Failed to cancel audit: ' + msg);
     }
   }
 }
