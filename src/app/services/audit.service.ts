@@ -6,12 +6,14 @@ import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, query, wh
 import { getStorage, ref, uploadString, getDownloadURL, FirebaseStorage } from 'firebase/storage';
 import firebaseConfig from '../../../firebase-applet-config.json';
 import { Audit, Vulnerability } from '../models/audit.models';
+import { ToastService } from './toast.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuditService {
   private platformId = inject(PLATFORM_ID);
+  private toastService = inject(ToastService);
   
   private app: FirebaseApp | null = null;
   private auth: Auth | null = null;
@@ -58,15 +60,18 @@ export class AuditService {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(this.auth, provider);
+      this.toastService.success('Logged in successfully');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set(msg);
+      this.toastService.error(`Login failed: ${msg}`);
     }
   }
 
   public async logout() {
     if (!this.auth) return;
     await this.auth.signOut();
+    this.toastService.info('Logged out');
   }
 
   private subscribeToAudits(userId: string) {
@@ -110,6 +115,7 @@ export class AuditService {
     const user = this.user();
     if (!user) {
       this.error.set('Must be logged in to create audit');
+      this.toastService.error('Must be logged in to create audit');
       return;
     }
 
@@ -121,6 +127,7 @@ export class AuditService {
 
       if (activeScan) {
         this.error.set('A scan is already in progress. Please wait for it to complete or cancel it.');
+        this.toastService.warning('A scan is already in progress');
         return null;
       }
       this.error.set(null); // Clear previous errors
@@ -136,6 +143,7 @@ export class AuditService {
         updatedAt: Date.now(),
       };
       await setDoc(newDocRef, newAudit);
+      this.toastService.info('Started scanning repository');
       
       // Kick off background analysis (don't await it so we can return the ID)
       this.runAnalysis(newDocRef.id, githubUrl);
@@ -144,6 +152,7 @@ export class AuditService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set('Failed to create audit: ' + msg);
+      this.toastService.error('Failed to create audit');
       return null;
     }
   }
@@ -166,6 +175,7 @@ export class AuditService {
         progressMessage: 'Analysis complete. Waiting for approval.',
         updatedAt: Date.now()
       });
+      this.toastService.success('Analysis complete');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await updateDoc(doc(this.db, 'audits', auditId), {
@@ -173,6 +183,7 @@ export class AuditService {
         error: msg,
         updatedAt: Date.now()
       });
+      this.toastService.error(`Analysis failed: ${msg}`);
     }
   }
 
@@ -191,6 +202,7 @@ export class AuditService {
         progressMessage: 'Applying patches to repository...',
         updatedAt: Date.now()
       });
+      this.toastService.info('Applying fix...');
       
       // Call backend to patch
       const res = await fetch('/api/patch-repo', {
@@ -222,10 +234,12 @@ export class AuditService {
         progressMessage: 'Patching complete.',
         updatedAt: Date.now()
       });
+      this.toastService.success('Fix applied successfully');
       
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set('Failed to approve fix: ' + msg);
+      this.toastService.error(`Failed to apply fix: ${msg}`);
       await updateDoc(doc(this.db, 'audits', auditId), {
         status: 'FAILED',
         error: msg,
@@ -249,9 +263,11 @@ export class AuditService {
         vulnerabilities: updatedVulns,
         updatedAt: Date.now()
       });
+      this.toastService.info('Fix rejected');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set('Failed to reject fix: ' + msg);
+      this.toastService.error('Failed to reject fix');
     }
   }
 
@@ -261,9 +277,11 @@ export class AuditService {
       const { deleteDoc } = await import('firebase/firestore');
       const auditRef = doc(this.db, 'audits', auditId);
       await deleteDoc(auditRef);
+      this.toastService.success('Audit deleted');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set('Failed to delete audit: ' + msg);
+      this.toastService.error('Failed to delete audit');
     }
   }
 
@@ -276,9 +294,11 @@ export class AuditService {
         progressMessage: 'Scan Cancelled',
         updatedAt: Date.now()
       });
+      this.toastService.info('Audit cancelled');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set('Failed to cancel audit: ' + msg);
+      this.toastService.error('Failed to cancel audit');
     }
   }
 }
