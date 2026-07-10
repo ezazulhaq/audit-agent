@@ -4,11 +4,12 @@ import { AuditService } from './services/audit.service';
 import { MatIconModule } from '@angular/material/icon';
 import { Audit } from './models/audit.models';
 import packageJson from '../../package.json';
+import { VulnerabilityChartComponent } from './components/vulnerability-chart.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, MatIconModule, VulnerabilityChartComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="fixed inset-0 bg-[#050505] text-[#e0e0e0] font-sans flex flex-col overflow-hidden">
@@ -682,8 +683,13 @@ import packageJson from '../../package.json';
                   </div>
 
                 </div>
-             </div>
-          }
+                
+                <!-- Vulnerability Analytics Chart -->
+                <div class="mt-8 mb-6 max-w-7xl mx-auto w-full">
+                  <app-vulnerability-chart></app-vulnerability-chart>
+                </div>
+              </div>
+           }
         </section>
       </main>
 
