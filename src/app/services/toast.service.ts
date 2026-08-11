@@ -14,7 +14,7 @@ export interface Toast {
 export class ToastService {
   public toasts = signal<Toast[]>([]);
 
-  show(message: string, type: ToastType = 'info', duration: number = 4000) {
+  show(message: string, type: ToastType = 'info', duration = 4000) {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: Toast = { id, message, type };
     

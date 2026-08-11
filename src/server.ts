@@ -36,6 +36,7 @@ app.post('/api/analyze-repo', async (req, res) => {
         description: 'Hardcoded secret detected in configuration file.',
         file: 'config/settings.json',
         line: 12,
+        originalCodeSnippet: '{\n  "api_key": "sk-1234567890abcdef"\n}',
         proposedFixSnippet: '',
         status: 'PENDING'
       },
@@ -46,6 +47,7 @@ app.post('/api/analyze-repo', async (req, res) => {
         description: 'Potential SQL injection vulnerability in query builder.',
         file: 'src/db/query.js',
         line: 45,
+        originalCodeSnippet: 'const query = "SELECT * FROM users WHERE username = \'" + req.body.username + "\'";\ndb.execute(query);',
         proposedFixSnippet: '',
         status: 'PENDING'
       }

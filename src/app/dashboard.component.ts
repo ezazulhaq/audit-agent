@@ -374,21 +374,44 @@ import { VulnerabilityChartComponent } from './components/vulnerability-chart.co
                  <div class="col-span-1 lg:col-span-8 flex flex-col bg-[#0a0a0a] rounded-xl border border-white/10 overflow-hidden shadow-2xl h-full">
                    <div class="h-10 bg-[#121212] border-b border-white/5 px-4 flex items-center justify-between shrink-0">
                      <span class="text-[10px] font-mono text-white/40 uppercase tracking-widest truncate pr-4">File: {{ vuln.file }}</span>
-                     <span class="text-[10px] font-mono shrink-0" [ngClass]="vuln.status === 'APPROVED' ? 'text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded' : 'text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded'">
-                        {{ vuln.status === 'APPROVED' ? 'Fix Applied' : 'Proposed Gemini Fix' }}
-                     </span>
+                     <div class="flex items-center gap-2">
+                       <button (click)="toggleDiff(vuln.id!)" class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border transition-colors cursor-pointer outline-none flex items-center gap-1"
+                               [ngClass]="expandedDiffs()[vuln.id!] ? 'bg-white/10 text-white border-white/20' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'">
+                         <mat-icon class="!w-3 !h-3 text-[12px] flex items-center justify-center">difference</mat-icon>
+                         {{ expandedDiffs()[vuln.id!] ? 'Hide Diff' : 'Show Diff' }}
+                       </button>
+                       <span class="text-[10px] font-mono shrink-0" [ngClass]="vuln.status === 'APPROVED' ? 'text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded' : 'text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded'">
+                          {{ vuln.status === 'APPROVED' ? 'Fix Applied' : 'Proposed Gemini Fix' }}
+                       </span>
+                     </div>
                    </div>
                    <div class="flex-1 font-mono text-xs p-6 leading-relaxed overflow-x-auto relative">
                      <!-- In a real app we'd compute diff properly, we simulate here for the prototype UI based on design specs -->
-                      <div class="flex gap-4 bg-red-500/5 -mx-6 px-6 py-1 group hover:bg-red-500/10 transition-colors border-l-2 border-red-500/40">
-                       <span class="w-8 text-right text-red-500/60 select-none group-hover:text-red-500">{{ vuln.line }}</span>
-                       <span class="text-red-200/80 group-hover:text-red-200">-  Original vulnerable code detected here</span>
-                     </div>
-                     
-                     <div class="mt-4 p-4 bg-zinc-900/50 rounded-lg border border-white/5 space-y-2">
-                       <p class="text-xs text-white/40 uppercase tracking-widest select-none">Gemini Fix Snippet:</p>
-                       <pre class="text-emerald-300 font-mono whitespace-pre-wrap leading-tight text-xs">{{ vuln.proposedFixSnippet }}</pre>
-                     </div>
+                     @if (expandedDiffs()[vuln.id!]) {
+                       <div class="flex flex-col gap-2 mb-4">
+                         <p class="text-[10px] text-white/40 uppercase tracking-widest select-none font-sans font-semibold">Diff Comparison</p>
+                         <div class="flex flex-col rounded-lg border border-white/10 overflow-hidden text-xs">
+                            <div class="flex bg-red-500/5 px-4 py-3 border-l-2 border-red-500/50 text-red-200">
+                              <span class="w-8 select-none text-red-500/50 mr-2 text-right shrink-0">{{ vuln.line }}</span>
+                              <pre class="whitespace-pre-wrap font-mono m-0">{{ vuln.originalCodeSnippet || '- Original vulnerable code detected here' }}</pre>
+                            </div>
+                            <div class="flex bg-emerald-500/5 px-4 py-3 border-l-2 border-emerald-500/50 text-emerald-300 border-t border-white/5">
+                              <span class="w-8 select-none text-emerald-500/50 mr-2 text-right shrink-0">+</span>
+                              <pre class="whitespace-pre-wrap font-mono m-0">{{ vuln.proposedFixSnippet }}</pre>
+                            </div>
+                         </div>
+                       </div>
+                     } @else {
+                       <div class="flex gap-4 bg-red-500/5 -mx-6 px-6 py-2 group hover:bg-red-500/10 transition-colors border-l-2 border-red-500/40">
+                        <span class="w-8 text-right text-red-500/60 select-none group-hover:text-red-500 shrink-0">{{ vuln.line }}</span>
+                        <pre class="text-red-200/80 group-hover:text-red-200 whitespace-pre-wrap m-0 font-mono">{{ vuln.originalCodeSnippet || '- Original vulnerable code detected here' }}</pre>
+                       </div>
+                       
+                       <div class="mt-4 p-4 bg-zinc-900/50 rounded-lg border border-white/5 space-y-2">
+                         <p class="text-[10px] text-white/40 uppercase tracking-widest select-none font-sans font-semibold">Gemini Fix Snippet:</p>
+                         <pre class="text-emerald-300 font-mono whitespace-pre-wrap leading-tight text-xs">{{ vuln.proposedFixSnippet }}</pre>
+                       </div>
+                     }
                      
                       <div class="mt-6 p-4 bg-[#121212] rounded-lg border border-white/5">
                        <p class="text-[10px] text-white/50 mb-1 uppercase tracking-widest font-sans font-semibold">Semgrep Context:</p>
@@ -755,6 +778,7 @@ export class DashboardComponent {
   version = packageJson.version;
   
   isMobileSidebarOpen = signal(false);
+  expandedDiffs = signal<Record<string, boolean>>({});
   
   audits = this.auditService.activeAudits;
   currentAudit = this.auditService.currentAudit;
@@ -838,6 +862,10 @@ export class DashboardComponent {
      if (this.currentAudit()) {
         this.auditService.rejectFix(this.currentAudit()!.id!, vulnId, this.vulns());
      }
+  }
+
+  toggleDiff(vulnId: string) {
+     this.expandedDiffs.update(d => ({...d, [vulnId]: !d[vulnId]}));
   }
 
   async cancelCurrentAudit() {

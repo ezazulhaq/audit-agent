@@ -17,6 +17,7 @@ export interface Vulnerability {
   description: string;
   file: string;
   line: number;
+  originalCodeSnippet?: string;
   proposedFixSnippet: string;
   status: VulnerabilityStatus;
 }
